@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SightShift Speaking Pipeline</title>
+<style>
+  :root {
+    --bg: #f8f8fa;
+    --card-bg: #fff;
+    --border: #e8e8ec;
+    --border-light: #f3f3f6;
+    --text: #1a1a2e;
+    --text-mid: #555;
+    --text-muted: #888;
+    --text-faint: #aaa;
+    --text-ghost: #bbb;
+    --green: #16a34a;
+    --blue: #2563eb;
+    --orange: #ea580c;
+    --red: #dc2626;
+    --amber: #b45309;
+    --navy: #1a1a2e;
+    --accent: #e94560;
+    --deep-blue: #0f3460;
+    --dark-blue: #16213e;
+    --badge-amber-bg: #fef3c7;
+    --badge-blue-bg: #dbeafe;
+    --badge-gray-bg: #f3f4f6;
+    --badge-green-bg: #dcfce7;
+    --badge-red-bg: #fef2f2;
+    --badge-blue-text: #1d4ed8;
+    --badge-gray-text: #6b7280;
+    --badge-green-text: #15803d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  body.locked { overflow: hidden; }
+
+  /* Auth overlay */
+  #auth-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--navy);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+  }
+  #auth-overlay h1 { color: #fff; font-size: 22px; font-weight: 700; }
+  #auth-overlay p { color: var(--text-muted); font-size: 13px; }
+  #auth-overlay input {
+    padding: 10px 16px; font-size: 15px; border: 2px solid #333;
+    border-radius: 8px; background: #222; color: #fff; width: 260px; text-align: center;
+  }
+  #auth-overlay input:focus { outline: none; border-color: var(--accent); }
+  #auth-overlay .auth-err { color: var(--accent); font-size: 12px; min-height: 18px; }
+  #auth-overlay button {
+    padding: 8px 32px; background: var(--accent); color: #fff; border: none;
+    border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+
+  /* Main container */
+  .container { padding: 16px 20px 40px; max-width: 1200px; margin: 0 auto; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+  .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; }
+  .header .meta { font-size: 11px; color: var(--text-muted); }
+
+  /* Panels and cards */
+  .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; }
+  .label-caps { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-muted); font-weight: 600; }
+
+  /* KPI Strip */
+  .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .kpi-card { padding: 12px 14px; }
+  .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-muted); font-weight: 600; margin-bottom: 3px; }
+  .kpi-value { font-size: 26px; font-weight: 800; letter-spacing: -1.2px; line-height: 1.1; }
+  .kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .kpi-value.green { color: var(--green); }
+  .kpi-value.blue { color: var(--blue); }
+  .kpi-value.accent { color: var(--accent); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 100; padding-top: 4px; overflow-x: auto; }
+  .tab-btn {
+    padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; background: none; color: var(--text-muted);
+    border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap;
+    transition: color 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Tables */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table thead th {
+    text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-faint); padding: 6px 8px 8px; font-weight: 600;
+    border-bottom: 1px solid #eee; position: sticky; top: 0; background: var(--card-bg);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .data-table thead th:hover { color: var(--text-mid); }
+  .data-table thead th .sort-arrow { font-size: 9px; margin-left: 3px; }
+  .data-table td { padding: 8px 8px; border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:hover { background: #fafafe; }
+  .data-table tbody tr.clickable { cursor: pointer; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+  .warmth-1 { background: var(--badge-red-bg); color: var(--red); }
+  .warmth-2 { background: var(--badge-amber-bg); color: var(--amber); }
+  .warmth-3 { background: var(--badge-green-bg); color: var(--badge-green-text); }
+  .status-not-contacted { background: var(--badge-gray-bg); color: var(--badge-gray-text); }
+  .status-researching { background: var(--badge-blue-bg); color: var(--badge-blue-text); }
+  .status-outreach-sent { background: var(--badge-amber-bg); color: var(--amber); }
+  .status-in-conversation { background: #e0e7ff; color: #4338ca; }
+  .status-confirmed { background: var(--badge-green-bg); color: var(--badge-green-text); }
+  .status-declined { background: var(--badge-red-bg); color: var(--red); }
+  .status-completed { background: #f3f4f6; color: #374151; }
+  .tier-1 { color: var(--green); font-weight: 700; }
+  .tier-2 { color: var(--blue); font-weight: 700; }
+  .tier-3 { color: var(--text-muted); font-weight: 600; }
+
+  /* Buttons */
+  .btn {
+    padding: 7px 16px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--badge-gray-bg); color: var(--text-mid); }
+  .btn-outline { background: none; border: 1px solid var(--border); color: var(--text-mid); }
+  .btn-danger { background: var(--badge-red-bg); color: var(--red); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  /* Filters */
+  .filter-select {
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 12px; background: var(--card-bg); color: var(--text); cursor: pointer;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 500;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: var(--card-bg); border-radius: 12px; width: 100%; max-width: 560px;
+    max-height: 90vh; overflow-y: auto; padding: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  }
+  .modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .modal label { display: block; font-size: 12px; font-weight: 600; color: var(--text-mid); margin-bottom: 4px; margin-top: 12px; }
+  .modal label:first-of-type { margin-top: 0; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; font-family: inherit; color: var(--text);
+  }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* Progress bar */
+  .progress-bar { height: 8px; background: #f0f0f3; border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; background: var(--green); transition: width 0.3s; }
+  .progress-fill.partial { background: var(--amber); }
+
+  /* Touch steps */
+  .touch-steps { display: flex; gap: 4px; align-items: center; }
+  .touch-step {
+    width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; border: 2px solid var(--border);
+    color: var(--text-muted); background: var(--card-bg);
+  }
+  .touch-step.done { background: var(--green); color: #fff; border-color: var(--green); }
+  .touch-step.current { border-color: var(--accent); color: var(--accent); }
+  .touch-connector { width: 12px; height: 2px; background: var(--border); }
+  .touch-connector.done { background: var(--green); }
+
+  /* Outreach card */
+  .outreach-card { padding: 14px 16px; margin-bottom: 10px; }
+  .outreach-card.overdue { border-left: 3px solid var(--red); }
+  .outreach-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .outreach-name { font-size: 14px; font-weight: 700; }
+  .outreach-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .outreach-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+
+  /* Gig list */
+  .gig-card { padding: 14px 16px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .gig-info { flex: 1; min-width: 200px; }
+  .gig-name { font-size: 14px; font-weight: 700; }
+  .gig-detail { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .gig-fee { font-size: 18px; font-weight: 800; color: var(--green); }
+  .gig-status { margin-top: 4px; }
+  .pipeline-total { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+  .pipeline-total span { font-size: 24px; font-weight: 800; color: var(--green); }
+
+  /* Checklist */
+  .checklist-card { padding: 14px 16px; margin-bottom: 10px; }
+  .checklist-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .checklist-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+  .checklist-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid var(--border-light); font-size: 13px; cursor: pointer; user-select: none;
+  }
+  .checklist-item:last-child { border-bottom: none; }
+  .checklist-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--green); cursor: pointer; flex-shrink: 0; }
+  .checklist-item.checked span { color: var(--text-ghost); text-decoration: line-through; }
+  .checklist-pct { font-size: 12px; font-weight: 700; margin-top: 8px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .container { padding: 12px 12px 32px; }
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .form-row { grid-template-columns: 1fr; }
+    .tab-btn { padding: 8px 12px; font-size: 12px; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .data-table { min-width: 700px; }
+    .modal { padding: 16px; }
+    .gig-card { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 480px) {
+    .kpi-strip { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .kpi-value { font-size: 22px; }
+    .header h1 { font-size: 16px; }
+  }
+
+  /* Utility */
+  .hidden { display: none !important; }
+  .text-right { text-align: right; }
+  .text-center { text-align: center; }
+  .mt-8 { margin-top: 8px; }
+  .mb-8 { margin-bottom: 8px; }
+  .overdue-text { color: var(--red); font-weight: 600; }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; }
+  input[type="file"] { display: none; }
+  .overall-rate { padding: 14px 16px; margin-bottom: 14px; }
+  .overall-rate .label-caps { margin-bottom: 4px; }
+  .overall-rate .kpi-value { font-size: 22px; }
+</style>
+</head>
+<body class="locked">
+
+<!-- Auth -->
+<div id="auth-overlay">
+  <h1>SightShift Speaking Pipeline</h1>
+  <p>Enter password to continue</p>
+  <input type="password" id="auth-input" placeholder="Password" autocomplete="off">
+  <div class="auth-err" id="auth-err"></div>
+  <button onclick="checkAuth()">Unlock</button>
+</div>
+
+<!-- Main App -->
+<div class="container" id="app" style="display:none;">
+  <div class="header">
+    <h1>Speaking Pipeline</h1>
+    <div class="meta">Last updated: <span id="last-updated">--</span></div>
+  </div>
+
+  <!-- KPI Strip -->
+  <div class="kpi-strip" id="kpi-strip"></div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <button class="tab-btn active" data-tab="targets">Target List</button>
+    <button class="tab-btn" data-tab="outreach">Outreach Tracker</button>
+    <button class="tab-btn" data-tab="gigs">Gig Calendar</button>
+    <button class="tab-btn" data-tab="checklist">Post-Talk</button>
+  </div>
+
+  <!-- Tab: Target List -->
+  <div class="tab-content active" id="tab-targets">
+    <div class="toolbar">
+      <select class="filter-select" id="filter-status" onchange="renderTargets()">
+        <option value="">All Statuses</option>
+        <option value="Not Contacted">Not Contacted</option>
+        <option value="Researching">Researching</option>
+        <option value="Outreach Sent">Outreach Sent</option>
+        <option value="In Conversation">In Conversation</option>
+        <option value="Confirmed">Confirmed</option>
+        <option value="Declined">Declined</option>
+        <option value="Completed">Completed</option>
+      </select>
+      <select class="filter-select" id="filter-warmth" onchange="renderTargets()">
+        <option value="">All Warmth</option>
+        <option value="1">Cold (1)</option>
+        <option value="2">Warm (2)</option>
+        <option value="3">Hot (3)</option>
+      </select>
+      <select class="filter-select" id="filter-tier" onchange="renderTargets()">
+        <option value="">All Tiers</option>
+        <option value="1">Tier 1</option>
+        <option value="2">Tier 2</option>
+        <option value="3">Tier 3</option>
+      </select>
+      <div class="toolbar-right">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV()">Export CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('csv-upload').click()">Import CSV</button>
+        <input type="file" id="csv-upload" accept=".csv" onchange="importCSV(event)">
+        <button class="btn btn-primary btn-sm" onclick="openEventModal()">+ Add Event</button>
+      </div>
+    </div>
+    <div class="panel" style="overflow:hidden;">
+      <div class="table-wrap">
+        <table class="data-table" id="target-table">
+          <thead>
+            <tr>
+              <th data-sort="name">Event <span class="sort-arrow"></span></th>
+              <th data-sort="date">Date <span class="sort-arrow"></span></th>
+              <th data-sort="location">Location <span class="sort-arrow"></span></th>
+              <th data-sort="audienceSize">Audience <span class="sort-arrow"></span></th>
+              <th data-sort="warmth">Warmth <span class="sort-arrow"></span></th>
+              <th data-sort="status">Status <span class="sort-arrow"></span></th>
+              <th data-sort="tier">Tier <span class="sort-arrow"></span></th>
+              <th data-sort="touchNumber">Touch # <span class="sort-arrow"></span></th>
+              <th data-sort="nextActionDate">Next Action <span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody id="target-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Outreach Tracker -->
+  <div class="tab-content" id="tab-outreach">
+    <div id="outreach-list"></div>
+    <div class="empty-state" id="outreach-empty">No active outreach. Change an event's status to "Researching" or "Outreach Sent" to track it here.</div>
+  </div>
+
+  <!-- Tab: Gig Calendar -->
+  <div class="tab-content" id="tab-gigs">
+    <div class="toolbar">
+      <div class="pipeline-total">Pipeline Value: <span id="pipeline-value">$0</span></div>
+      <div class="toolbar-right">
+        <button class="btn btn-primary btn-sm" onclick="openGigModal()">+ Add Gig</button>
+      </div>
+    </div>
+    <div id="gig-list"></div>
+    <div class="empty-state" id="gig-empty">No gigs yet. Add your first speaking engagement above.</div>
+  </div>
+
+  <!-- Tab: Post-Talk Checklist -->
+  <div class="tab-content" id="tab-checklist">
+    <div class="overall-rate panel" id="overall-completion">
+      <div class="label-caps">Overall Completion Rate</div>
+      <div class="kpi-value green" id="overall-pct">--</div>
+    </div>
+    <div id="checklist-list"></div>
+    <div class="empty-state" id="checklist-empty">No completed gigs yet. Post-talk checklists appear after a gig is marked "Completed".</div>
+  </div>
+
+  <!-- Footer -->
+  <div style="margin-top: 32px; text-align: center;">
+    <button class="btn btn-danger btn-sm" onclick="resetData()">Reset All Data</button>
+  </div>
+</div>
+
+<!-- Event Modal -->
+<div class="modal-overlay hidden" id="event-modal">
+  <div class="modal">
+    <h2 id="event-modal-title">Add Event</h2>
+    <input type="hidden" id="evt-id">
+    <label>Event Name *</label>
+    <input type="text" id="evt-name" placeholder="e.g., Global Leadership Summit">
+    <div class="form-row">
+      <div><label>Date</label><input type="text" id="evt-date" placeholder="e.g., Aug 6-7, 2026"></div>
+      <div><label>Location</label><input type="text" id="evt-location" placeholder="e.g., Willow Creek, IL"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Audience Size</label><input type="text" id="evt-audience" placeholder="e.g., 400K+"></div>
+      <div><label>Audience Type</label><input type="text" id="evt-audience-type" placeholder="e.g., Curated/Invite"></div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Warmth Score</label>
+        <select id="evt-warmth">
+          <option value="1">1 - Cold</option>
+          <option value="2">2 - Warm</option>
+          <option value="3">3 - Hot</option>
+        </select>
+      </div>
+      <div>
+        <label>Status</label>
+        <select id="evt-status">
+          <option value="Not Contacted">Not Contacted</option>
+          <option value="Researching">Researching</option>
+          <option value="Outreach Sent">Outreach Sent</option>
+          <option value="In Conversation">In Conversation</option>
+          <option value="Confirmed">Confirmed</option>
+          <option value="Declined">Declined</option>
+          <option value="Completed">Completed</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Tier</label>
+        <select id="evt-tier">
+          <option value="1">Tier 1</option>
+          <option value="2">Tier 2</option>
+          <option value="3">Tier 3</option>
+        </select>
+      </div>
+      <div><label>Outreach Touch #</label><input type="number" id="evt-touch" min="0" max="4" value="0"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Next Action Date</label><input type="date" id="evt-next-action"></div>
+      <div><label>Fee (if known)</label><input type="text" id="evt-fee" placeholder="e.g., $5,000"></div>
+    </div>
+    <label>Notes</label>
+    <textarea id="evt-notes" placeholder="Contact info, submission URLs, deadlines..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeEventModal()">Cancel</button>
+      <button class="btn btn-danger" id="evt-delete-btn" onclick="deleteEvent()" style="display:none;">Delete</button>
+      <button class="btn btn-primary" onclick="saveEvent()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Gig Modal -->
+<div class="modal-overlay hidden" id="gig-modal">
+  <div class="modal">
+    <h2 id="gig-modal-title">Add Gig</h2>
+    <input type="hidden" id="gig-id">
+    <label>Event Name *</label>
+    <input type="text" id="gig-name" placeholder="e.g., Purpose Summit Keynote">
+    <div class="form-row">
+      <div><label>Date *</label><input type="date" id="gig-date"></div>
+      <div><label>Location</label><input type="text" id="gig-location" placeholder="e.g., Atlanta, GA"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Fee</label><input type="number" id="gig-fee" placeholder="5000"></div>
+      <div>
+        <label>Status</label>
+        <select id="gig-status">
+          <option value="Tentative">Tentative</option>
+          <option value="Pending">Pending</option>
+          <option value="Confirmed">Confirmed</option>
+          <option value="Completed">Completed</option>
+        </select>
+      </div>
+    </div>
+    <label>Notes</label>
+    <textarea id="gig-notes" placeholder="Talk topic, logistics, contacts..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeGigModal()">Cancel</button>
+      <button class="btn btn-danger" id="gig-delete-btn" onclick="deleteGig()" style="display:none;">Delete</button>
+      <button class="btn btn-primary" onclick="saveGig()">Save Gig</button>
+    </div>
+  </div>
+</div>
+
+<!-- Touch Modal -->
+<div class="modal-overlay hidden" id="touch-modal">
+  <div class="modal">
+    <h2>Log Touch</h2>
+    <input type="hidden" id="touch-evt-id">
+    <label>Touch Type</label>
+    <select id="touch-type">
+      <option value="Email">Email</option>
+      <option value="LinkedIn">LinkedIn Message</option>
+      <option value="Phone">Phone Call</option>
+      <option value="Intro">Warm Intro</option>
+      <option value="Other">Other</option>
+    </select>
+    <label>Date</label>
+    <input type="date" id="touch-date">
+    <label>Notes</label>
+    <textarea id="touch-notes" placeholder="What happened..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeTouchModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTouch()">Log Touch</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ AUTH ============
+const AUTH_KEY = 'speakingPipelineAuth';
+const DATA_KEY = 'speakingPipeline';
+const PASS = 'sightshift2026';
+
+function checkAuth() {
+  const v = document.getElementById('auth-input').value;
+  if (v === PASS) {
+    localStorage.setItem(AUTH_KEY, 'true');
+    unlock();
+  } else {
+    document.getElementById('auth-err').textContent = 'Incorrect password';
+  }
+}
+function unlock() {
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.body.classList.remove('locked');
+  init();
+}
+document.getElementById('auth-input').addEventListener('keydown', e => { if (e.key === 'Enter') checkAuth(); });
+if (localStorage.getItem(AUTH_KEY) === 'true') { unlock(); }
+
+// ============ DATA ============
+const CHECKLIST_ITEMS = [
+  'Asked organizer for 2 intros',
+  'Collected video testimonials',
+  'Posted on social media',
+  'Sent thank-you email (with Give-to-Get)',
+  'Sent 48-hour follow-up to attendees',
+  'Sent 48-hour follow-up to organizer',
+  'Updated referrals in pipeline'
+];
+
+function defaultData() {
+  return {
+    lastUpdated: new Date().toISOString(),
+    events: [
+      { id: 'e1', name: 'Global Leadership Summit', date: 'Aug 6-7, 2026', location: 'Willow Creek, IL', audienceSize: '400K+', audienceType: 'Curated/Invite', warmth: 1, status: 'Not Contacted', tier: 2, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e2', name: 'EntreLeadership Summit', date: 'Nov 8-13, 2026', location: 'Orlando, FL', audienceSize: '2,700', audienceType: 'Curated/Invite', warmth: 1, status: 'Not Contacted', tier: 2, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e3', name: 'Leadercast', date: 'Apr 9, 2026', location: 'Kansas City, MO', audienceSize: '50K+', audienceType: 'Curated', warmth: 1, status: 'Not Contacted', tier: 2, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e4', name: 'Purpose Summit', date: 'Oct 19-21, 2026', location: 'Atlanta, GA', audienceSize: '300-500', audienceType: 'Open submissions', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'DOUBLE SEND FLAG: Two emails sent to davin@purposepoint.com (Mar 23 and Mar 27, different subjects). Monitor for confusion. Faith-work version. Book send pending address.', touches: [] },
+      { id: 'e5', name: 'Conscious Capitalism CEO Summit', date: 'Oct 2026', location: 'Austin, TX', audienceSize: '250 CEOs', audienceType: 'Self-nomination open', warmth: 1, status: 'Not Contacted', tier: 1, touchNumber: 0, nextActionDate: '', fee: '', notes: 'Self-nomination open year-round: ceosummit.consciouscapitalism.org/apply', touches: [] },
+      { id: 'e6', name: 'CultureCon', date: 'Aug 4-6, 2026', location: 'Madison, WI', audienceSize: '500+', audienceType: 'Open breakout slots', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 2, nextActionDate: '2026-04-05', fee: '', notes: 'Touch 1 sent Mar 18. No real reply (received marketing newsletter Mar 24, not a response to outreach). Touch 2 drafted Mar 29: "What happens in the first 10 minutes" — curiosity/transformation story.', touches: [] },
+      { id: 'e7', name: 'Movement Leadership Summit', date: 'Oct 12, 2026', location: 'Grand Rapids, MI', audienceSize: '200-400', audienceType: 'TBD', warmth: 1, status: 'Not Contacted', tier: 3, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e8', name: 'Faith Driven Entrepreneur', date: 'Sep 18, 2026', location: 'Virtual', audienceSize: '10K+', audienceType: 'TBD', warmth: 1, status: 'Not Contacted', tier: 3, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e9', name: 'Chief Executive Leadership Conference', date: 'Nov 5-6, 2026', location: 'San Antonio, TX', audienceSize: '200-300 CEOs', audienceType: 'TBD', warmth: 1, status: 'Not Contacted', tier: 3, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e10', name: 'Great Place to Work Summit', date: 'Apr 21-23, 2026', location: 'Las Vegas, NV', audienceSize: '1,500+', audienceType: 'TBD', warmth: 1, status: 'Not Contacted', tier: 3, touchNumber: 0, nextActionDate: '', fee: '', notes: '', touches: [] },
+      { id: 'e11', name: 'SWC 2026 (US Christian Chamber)', date: 'Apr 22-24, 2026', location: 'Orlando, FL', audienceSize: '750+', audienceType: 'Contact directly', warmth: 2, status: 'In Conversation', tier: 1, touchNumber: 1, nextActionDate: '2026-04-07', fee: '', notes: 'Krystal Parker replied Mar 23. Book shipping to Windermere FL. Touch 2 due Apr 7. She asked if Chris is attending SWC Orlando in April — big door.', touches: [] },
+      { id: 'e12', name: 'Faith at Work Summit', date: 'Jun 17-19, 2026', location: 'Cincinnati, OH', audienceSize: '400-500', audienceType: 'Contact directly', warmth: 3, status: 'In Conversation', tier: 1, touchNumber: 1, nextActionDate: '2026-04-07', fee: '', notes: 'Chuck Proudfit replied Mar 24. Book shipping to 9891 Montgomery Rd #202, Cincinnati OH 45242. Touch 2 due Apr 7. He is out of office through Mar 29.', touches: [] },
+      { id: 'e13', name: 'Outcomes Conference', date: 'Apr 28-30, 2026', location: 'Dallas, TX', audienceSize: '1,500+', audienceType: 'Open call', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to donna.bostick@christianleadershipalliance.org. 2027 seed. Long game.', touches: [] },
+      { id: 'e14', name: 'Convene National Gathering', date: 'May 6-8, 2026', location: 'San Diego, CA', audienceSize: '200+', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to melody.wright@convenenow.com. Faith-work version. Book send pending address.', touches: [] },
+      { id: 'e15', name: 'C12 CURRENT27', date: '2027 TBD', location: 'TBD', audienceSize: '2,000', audienceType: 'Curated', warmth: 1, status: 'Not Contacted', tier: 2, touchNumber: 0, nextActionDate: '', fee: '', notes: 'Need C12 connection to get in.', touches: [] },
+      { id: 'e16', name: 'Workmatters Conference', date: 'Sep 2026', location: 'Bentonville, AR', audienceSize: 'TBD', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to egreenhaw@workmatters.org. Faith-work version. Book send pending address.', touches: [] },
+      { id: 'e17', name: 'Vistage Speaker Bureau', date: 'Ongoing', location: 'Nationwide', audienceSize: '200-500 per group', audienceType: 'Apply', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to SpeakerRelations@vistage.com. Formal speaker application. Highest volume opportunity (1,600+ groups).', touches: [] },
+      { id: 'e18', name: 'EO (Entrepreneurs\' Organization)', date: 'Various 2026', location: 'Multiple cities', audienceSize: '500-800 each', audienceType: 'eSpeakers platform', warmth: 1, status: 'Not Contacted', tier: 1, touchNumber: 0, nextActionDate: '', fee: '', notes: 'Register at espeakers.com/eo-speakers-welcome. NERVE (Oct, Baltimore), XCENTRIC (Cleveland), ALCHEMY (Santa Fe).', touches: [] },
+      { id: 'e19', name: 'YPO', date: 'Ongoing', location: 'Nationwide', audienceSize: 'Varies', audienceType: 'Warm path', warmth: 2, status: 'Outreach Sent', tier: 2, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Joel Furno (joel@citrin.co) is YPO connection. Draft catch-up email in Gmail. Former coaching client.', touches: [] },
+      { id: 'e20', name: 'Ohio CEO Summit', date: 'May 7, 2026', location: 'Columbus, OH', audienceSize: 'Top Ohio CEOs', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to events@ohiobrt.com. TOP LOCAL TARGET. Zero travel. General leadership version.', touches: [] },
+      { id: 'e21', name: 'Columbus Chamber CEO Insights Series', date: 'Ongoing monthly', location: 'Columbus, OH', audienceSize: '1,000+ members', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to events@columbus.org. Zero travel. Multiple shots. Les Wexner has spoken.', touches: [] },
+      { id: 'e22', name: 'Baylor Armes Christian Leadership Summit', date: 'May 19-20, 2026', location: 'Waco, TX', audienceSize: 'TBD', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to Caryn_Williams@baylor.edu. Hankamer School. Faith-work version.', touches: [] },
+      { id: 'e23', name: 'NAWL Annual Meeting', date: 'Jul 22-23, 2026', location: 'Chicago, IL', audienceSize: '300-500', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to crobinson@nawl.org (Chelsea Robinson). Legal version. Speaker Interest Form on website.', touches: [] },
+      { id: 'e24', name: 'ALA Annual Conference', date: 'Apr 12-15, 2026 (2027: May 23-26, Milwaukee)', location: 'National Harbor, MD', audienceSize: '1,000+', audienceType: 'Formal proposal', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to education@alanet.org. 1,000+ legal admins. Legal version.', touches: [] },
+      { id: 'e25', name: 'Lawyer Leadership Summit', date: 'Jun 20-24, 2026', location: 'Ischia, Italy', audienceSize: '30-50', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to elizabeth@happinessangha.com (Elizabeth Pyjov). Harvard faculty, GCs. Intimate retreat.', touches: [] },
+      { id: 'e26', name: 'Catalyst Convene New York', date: 'Apr 22-23, 2026', location: 'New York, NY', audienceSize: '500-1,000', audienceType: 'Speakers bureau', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to speakers@catalyst.org. Workplace inclusion. General leadership.', touches: [] },
+      { id: 'e27', name: 'Mackinac Policy Conference', date: 'May 26-29, 2026', location: 'Mackinac Island, MI', audienceSize: 'MI leaders', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to csabak@detroitchamber.com (Catia Sabak). Very high-profile MI leaders. Long-term play.', touches: [] },
+      { id: 'e28', name: 'ABA Annual Meeting (Law Practice Div)', date: 'Jul 29-Aug 4, 2026', location: 'Chicago, IL', audienceSize: '5,000+', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to lp@americanbar.org. Pitch through Law Practice Division. Legal version.', touches: [] },
+      { id: 'e29', name: 'MaxLawCon', date: 'Oct 8-9, 2026', location: 'Atlanta, GA', audienceSize: '300-500', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to Tyson@MFInjury.com (Tyson Mutrux). Law firm owners. Health/wellness focus. Legal version.', touches: [] },
+      { id: 'e30', name: 'Aileron Business Owner Series', date: 'Ongoing', location: 'Dayton, OH', audienceSize: 'TBD', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to customerservice@aileron.org. World-class training center. 70 min from Columbus.', touches: [] },
+      { id: 'e31', name: 'WOBI World Business Forum NYC', date: 'Nov 4-5, 2026', location: 'New York, NY', audienceSize: '5,000+', audienceType: 'Open call (breakout)', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to wobidigital@wobi.com. IFQ one-pager give. Indra Nooyi, Jim Collins on main stage.', touches: [] },
+      { id: 'e32', name: 'Linkage Institute (SHRM)', date: 'Nov 15-18, 2026', location: 'Nashville, TN', audienceSize: '500-1,000', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Draft in Gmail to linkage-customerservice@shrm.org. Leadership dev intensive. IFQ one-pager give.', touches: [] },
+      { id: 'e33', name: 'Shannon Lee (Vistage connector)', date: 'Apr 7, 2026', location: 'Virtual (Zoom)', audienceSize: 'Connector', audienceType: 'Warm path', warmth: 3, status: 'In Conversation', tier: 1, touchNumber: 1, nextActionDate: '2026-04-07', fee: '', notes: 'Virtual Zoom call confirmed Apr 7, 8 AM EDT. Goal: Artie Isaac Vistage intro. Zoom: us02web.zoom.us/j/82513720671. She declined in-person (too far at 8am). Connector play.', touches: [] },
+      { id: 'e34', name: 'Perry Maughmer (Vistage)', date: 'Apr 8-9, 2026 (coffee)', location: 'Columbus, OH (Versa)', audienceSize: 'Connector', audienceType: 'Warm path', warmth: 3, status: 'In Conversation', tier: 1, touchNumber: 1, nextActionDate: '2026-04-09', fee: '', notes: 'Replied Mar 26: wants coffee at Versa. Reply drafted Mar 29 (suggests Apr 8 or 9). Columbus Vistage Chair (2 groups). Goal: Vistage group speaking + EO Columbus intro.', touches: [] },
+      { id: 'e35', name: 'John McNeal (Vistage)', date: 'TBD', location: 'Columbus/Dayton, OH', audienceSize: 'Connector', audienceType: 'Warm path', warmth: 2, status: 'Outreach Sent', tier: 2, touchNumber: 2, nextActionDate: '2026-04-01', fee: '', notes: 'Touch 1 sent Mar 23 (no Gmail record — may have been via other channel). Touch 2 drafted Mar 29: "Following up." Email john@johnmcneal.com UNVERIFIED — confirm before sending. Columbus/Dayton Vistage Chair.', touches: [] },
+      { id: 'e36', name: 'OAJ Convention (Heidi Bretz)', date: 'May 6-8, 2026', location: 'Columbus, OH', audienceSize: '500+', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'LOCAL. Zero travel. Touch 1 drafted Mar 29 to heidib@oajustice.org (Heidi Bretz, Dir of Member Relations). Legal version. "A leadership book for Ohio\'s trial attorneys." 11.25 CLE credits. General: info@oajustice.org, 614-341-6800.', touches: [] },
+      { id: 'e37', name: 'NALP Annual Education Conference', date: 'Apr 14-17, 2026', location: 'Hollywood, FL', audienceSize: '500-800', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to mhagner@nalp.org (Meaghan Hagner). Legal version. Conference very soon — seeds for 2027. National Assoc for Law Placement. Career dev / legal talent pipeline.', touches: [] },
+      { id: 'e38', name: 'LMA Annual Conference', date: 'Apr 20-22, 2026', location: 'New Orleans, LA', audienceSize: '1,500-2,000', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to membersupport@legalmarketing.org. Legal Marketing Association. Conference very soon — seeds for 2027.', touches: [] },
+      { id: 'e39', name: 'Columbus Bar Association', date: 'Ongoing 2026', location: 'Columbus, OH', audienceSize: '5,000 members', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'LOCAL. Zero travel. Touch 1 drafted Mar 29 to memberservices@cbalaw.org. 400+ hrs CLE/yr. Lowest-barrier legal target. Legal version.', touches: [] },
+      { id: 'e40', name: 'OSBA Annual Meeting', date: 'Fall 2026', location: 'Columbus, OH', audienceSize: '500-1,000', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'LOCAL. Zero travel. Touch 1 drafted Mar 29 to cle@ohiobar.org (UNVERIFIED — use ohiobar.org/contact-us if bounces). IFQ one-pager give. Ohio State Bar Association.', touches: [] },
+      { id: 'e41', name: 'Indiana HR Conference', date: 'Apr 28-30, 2026', location: 'Indianapolis, IN', audienceSize: 'Large', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to awaning@indianachamber.com (Abby Waning). Indiana Chamber. General leadership / IFQ give. 3 hrs from Columbus.', touches: [] },
+      { id: 'e42', name: 'Ohio Tech Summit (OhioX)', date: 'May 14, 2026', location: 'Columbus, OH', audienceSize: 'Tech execs', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'LOCAL. Zero travel. Touch 1 drafted Mar 29 to team@ohiox.org. Ohio State University Ohio Union. Book give. General leadership version.', touches: [] },
+      { id: 'e43', name: 'Midwest Leadership Summit', date: 'Apr 21, 2026 (2027 target)', location: 'Overland Park, KS', audienceSize: '1,100+', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 2, touchNumber: 1, nextActionDate: '2026-09-01', fee: '', notes: '2026 speaker apps closed. Reopen Sep 2026 for 2027. Seed email drafted Mar 29 to hello@centralexchange.org. "Choose Courage" theme aligns perfectly. Central Exchange.', touches: [] },
+      { id: 'e44', name: 'LeadingBetter Summit Louisville', date: 'Apr 22, 2026', location: 'Louisville, KY', audienceSize: '600+', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to contact@leadershiplouisville.org (UNVERIFIED — use (502) 561-0458 or website form if bounces). 3.5 hrs from Columbus. Book give.', touches: [] },
+      { id: 'e45', name: 'Workhuman Live', date: 'Apr 27-30, 2026', location: 'Orlando, FL', audienceSize: '3,000+', audienceType: 'Speaker application', warmth: 1, status: 'Outreach Sent', tier: 2, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to speakers@workhuman.com. 2026 Orlando deadline passed (Sep 30, 2025). Visibility play. Past speakers: Adam Grant, Brene Brown. IFQ give.', touches: [] },
+      { id: 'e46', name: 'Chief Executive Growth Summit', date: 'Jun 9-10, 2026', location: 'Nashville, TN', audienceSize: '200-300 CEOs', audienceType: 'Contact directly', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to events@chiefexecutivegroup.com. CEO-only. Hutton Hotel Nashville. Book give. General leadership version.', touches: [] },
+      { id: 'e47', name: 'ACMP Change Orlando', date: 'May 17-20, 2026', location: 'Orlando, FL', audienceSize: '500-1,000', audienceType: 'Open call for speakers', warmth: 1, status: 'Outreach Sent', tier: 1, touchNumber: 1, nextActionDate: '', fee: '', notes: 'Touch 1 drafted Mar 29 to info@acmpglobal.org. ALSO apply via open CFP at acmpglobal.org/page/2026-call-for-speakers. Change management practitioners. IFQ give.', touches: [] },
+    ],
+    gigs: [],
+    checklists: {},
+    campaignReplies: 4,
+    campaignSent: 25,
+    booksShipped: 2,
+    booksRequested: 2
+  };
+}
+
+let data;
+function loadData() {
+  const raw = localStorage.getItem(DATA_KEY);
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+      // Migrate: ensure touches array exists on all events
+      data.events.forEach(e => { if (!e.touches) e.touches = []; });
+      if (!data.checklists) data.checklists = {};
+    } catch(e) { data = defaultData(); }
+  } else {
+    data = defaultData();
+  }
+}
+function saveData() {
+  data.lastUpdated = new Date().toISOString();
+  localStorage.setItem(DATA_KEY, JSON.stringify(data));
+  document.getElementById('last-updated').textContent = formatDateTime(data.lastUpdated);
+}
+
+function resetData() {
+  if (!confirm('Reset ALL data to defaults? This cannot be undone.')) return;
+  data = defaultData();
+  saveData();
+  renderAll();
+}
+
+// ============ HELPERS ============
+function uid() { return 'e' + Date.now() + Math.random().toString(36).slice(2,6); }
+
+function formatDateTime(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' +
+         d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatDate(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function isOverdue(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr + 'T23:59:59');
+  return d < new Date();
+}
+
+function statusClass(s) {
+  return 'status-' + s.toLowerCase().replace(/\s+/g, '-');
+}
+
+function warmthClass(w) { return 'warmth-' + w; }
+function warmthLabel(w) { return ['','Cold','Warm','Hot'][w] || ''; }
+
+// ============ TABS ============
+document.getElementById('tabs').addEventListener('click', e => {
+  if (!e.target.classList.contains('tab-btn')) return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('tab-' + e.target.dataset.tab).classList.add('active');
+});
+
+// ============ KPI ============
+function renderKPIs() {
+  const events = data.events;
+  const gigs = data.gigs;
+  const now = new Date();
+  const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1);
+  const yStart = new Date(now.getFullYear(), 0, 1);
+
+  const totalTargets = events.length;
+  const activeOutreach = events.filter(e => e.status === 'Researching' || e.status === 'Outreach Sent').length;
+  const gigsThisQ = gigs.filter(g => {
+    const d = new Date(g.date + 'T12:00:00');
+    return (g.status === 'Confirmed' || g.status === 'Completed') && d >= qStart;
+  }).length;
+  const gigsYTD = gigs.filter(g => {
+    const d = new Date(g.date + 'T12:00:00');
+    return (g.status === 'Confirmed' || g.status === 'Completed') && d >= yStart;
+  }).length;
+  const pipelineVal = gigs.reduce((s, g) => s + (parseFloat(g.fee) || 0), 0);
+
+  // Avg referrals: count checklist item 0 (asked for intros) completion
+  const completedGigIds = gigs.filter(g => g.status === 'Completed').map(g => g.id);
+  const introsDone = completedGigIds.filter(id => data.checklists[id] && data.checklists[id].items[0]).length;
+  const avgReferrals = completedGigIds.length > 0 ? (introsDone / completedGigIds.length * 2).toFixed(1) : '0';
+
+  // Conversion rate
+  const contacted = events.filter(e => e.status !== 'Not Contacted').length;
+  const booked = events.filter(e => e.status === 'Confirmed' || e.status === 'Completed').length;
+  const convRate = contacted > 0 ? Math.round(booked / contacted * 100) : 0;
+
+  const campaignReplies = data.campaignReplies != null ? data.campaignReplies : 4;
+  const campaignSent = data.campaignSent != null ? data.campaignSent : 25;
+  const campaignRate = campaignSent > 0 ? Math.round(campaignReplies / campaignSent * 100) : 0;
+
+  const el = document.getElementById('kpi-strip');
+  el.innerHTML = `
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Targets</div><div class="kpi-value">${totalTargets}</div><div class="kpi-sub">in pipeline</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Active Outreach</div><div class="kpi-value blue">${activeOutreach}</div><div class="kpi-sub">in a sequence</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Booked (Quarter)</div><div class="kpi-value green">${gigsThisQ}</div><div class="kpi-sub">this quarter</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Booked (YTD)</div><div class="kpi-value green">${gigsYTD}</div><div class="kpi-sub">year to date</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Pipeline Value</div><div class="kpi-value accent">$${pipelineVal.toLocaleString()}</div><div class="kpi-sub">total fees</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Avg Referrals</div><div class="kpi-value">${avgReferrals}</div><div class="kpi-sub">per completed gig</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Conversion</div><div class="kpi-value">${convRate}%</div><div class="kpi-sub">outreach to booked</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Campaign Replies</div><div class="kpi-value green">${campaignReplies}</div><div class="kpi-sub">of ${campaignSent} sent (${campaignRate}%)</div></div>
+    <div class="panel kpi-card"><div class="kpi-label label-caps">Books Shipped</div><div class="kpi-value accent">${data.booksShipped || 2}</div><div class="kpi-sub">${data.booksRequested || 2} requested</div></div>
+  `;
+}
+
+// ============ TARGET LIST ============
+let sortCol = 'name', sortDir = 1;
+
+function renderTargets() {
+  const statusFilter = document.getElementById('filter-status').value;
+  const warmthFilter = document.getElementById('filter-warmth').value;
+  const tierFilter = document.getElementById('filter-tier').value;
+
+  let items = data.events.slice();
+  if (statusFilter) items = items.filter(e => e.status === statusFilter);
+  if (warmthFilter) items = items.filter(e => e.warmth == warmthFilter);
+  if (tierFilter) items = items.filter(e => e.tier == tierFilter);
+
+  items.sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol];
+    if (sortCol === 'warmth' || sortCol === 'tier' || sortCol === 'touchNumber') {
+      av = Number(av) || 0; bv = Number(bv) || 0;
+    } else if (typeof av === 'string') {
+      av = av.toLowerCase(); bv = (bv || '').toLowerCase();
+    }
+    if (av < bv) return -1 * sortDir;
+    if (av > bv) return 1 * sortDir;
+    return 0;
+  });
+
+  const tbody = document.getElementById('target-tbody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">No matching events</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(e => `
+    <tr class="clickable" onclick="openEventModal('${e.id}')">
+      <td style="font-weight:600;max-width:200px;">${esc(e.name)}</td>
+      <td style="white-space:nowrap;">${esc(e.date)}</td>
+      <td>${esc(e.location)}</td>
+      <td>${esc(e.audienceSize)}</td>
+      <td><span class="badge ${warmthClass(e.warmth)}">${e.warmth} - ${warmthLabel(e.warmth)}</span></td>
+      <td><span class="badge ${statusClass(e.status)}">${esc(e.status)}</span></td>
+      <td><span class="tier-${e.tier}">Tier ${e.tier}</span></td>
+      <td class="text-center">${e.touchNumber}</td>
+      <td style="white-space:nowrap;" class="${e.nextActionDate && isOverdue(e.nextActionDate) ? 'overdue-text' : ''}">${e.nextActionDate ? formatDate(e.nextActionDate) : '--'}</td>
+    </tr>
+  `).join('');
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Sorting
+document.getElementById('target-table').querySelector('thead').addEventListener('click', e => {
+  const th = e.target.closest('th');
+  if (!th || !th.dataset.sort) return;
+  if (sortCol === th.dataset.sort) { sortDir *= -1; } else { sortCol = th.dataset.sort; sortDir = 1; }
+  renderTargets();
+});
+
+// ============ EVENT MODAL ============
+function openEventModal(id) {
+  const modal = document.getElementById('event-modal');
+  const title = document.getElementById('event-modal-title');
+  const delBtn = document.getElementById('evt-delete-btn');
+
+  if (id) {
+    const evt = data.events.find(e => e.id === id);
+    if (!evt) return;
+    title.textContent = 'Edit Event';
+    delBtn.style.display = '';
+    document.getElementById('evt-id').value = id;
+    document.getElementById('evt-name').value = evt.name;
+    document.getElementById('evt-date').value = evt.date;
+    document.getElementById('evt-location').value = evt.location;
+    document.getElementById('evt-audience').value = evt.audienceSize;
+    document.getElementById('evt-audience-type').value = evt.audienceType || '';
+    document.getElementById('evt-warmth').value = evt.warmth;
+    document.getElementById('evt-status').value = evt.status;
+    document.getElementById('evt-tier').value = evt.tier;
+    document.getElementById('evt-touch').value = evt.touchNumber;
+    document.getElementById('evt-next-action').value = evt.nextActionDate || '';
+    document.getElementById('evt-fee').value = evt.fee || '';
+    document.getElementById('evt-notes').value = evt.notes || '';
+  } else {
+    title.textContent = 'Add Event';
+    delBtn.style.display = 'none';
+    document.getElementById('evt-id').value = '';
+    document.getElementById('evt-name').value = '';
+    document.getElementById('evt-date').value = '';
+    document.getElementById('evt-location').value = '';
+    document.getElementById('evt-audience').value = '';
+    document.getElementById('evt-audience-type').value = '';
+    document.getElementById('evt-warmth').value = '1';
+    document.getElementById('evt-status').value = 'Not Contacted';
+    document.getElementById('evt-tier').value = '1';
+    document.getElementById('evt-touch').value = '0';
+    document.getElementById('evt-next-action').value = '';
+    document.getElementById('evt-fee').value = '';
+    document.getElementById('evt-notes').value = '';
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeEventModal() { document.getElementById('event-modal').classList.add('hidden'); }
+
+function saveEvent() {
+  const name = document.getElementById('evt-name').value.trim();
+  if (!name) { alert('Event name is required.'); return; }
+
+  const obj = {
+    name,
+    date: document.getElementById('evt-date').value.trim(),
+    location: document.getElementById('evt-location').value.trim(),
+    audienceSize: document.getElementById('evt-audience').value.trim(),
+    audienceType: document.getElementById('evt-audience-type').value.trim(),
+    warmth: parseInt(document.getElementById('evt-warmth').value),
+    status: document.getElementById('evt-status').value,
+    tier: parseInt(document.getElementById('evt-tier').value),
+    touchNumber: parseInt(document.getElementById('evt-touch').value) || 0,
+    nextActionDate: document.getElementById('evt-next-action').value,
+    fee: document.getElementById('evt-fee').value.trim(),
+    notes: document.getElementById('evt-notes').value.trim(),
+  };
+
+  const id = document.getElementById('evt-id').value;
+  if (id) {
+    const idx = data.events.findIndex(e => e.id === id);
+    if (idx >= 0) { Object.assign(data.events[idx], obj); }
+  } else {
+    obj.id = uid();
+    obj.touches = [];
+    data.events.push(obj);
+  }
+  saveData();
+  closeEventModal();
+  renderAll();
+}
+
+function deleteEvent() {
+  const id = document.getElementById('evt-id').value;
+  if (!id) return;
+  if (!confirm('Delete this event?')) return;
+  data.events = data.events.filter(e => e.id !== id);
+  saveData();
+  closeEventModal();
+  renderAll();
+}
+
+// ============ OUTREACH TRACKER ============
+function renderOutreach() {
+  const items = data.events.filter(e => e.status === 'Researching' || e.status === 'Outreach Sent');
+  const container = document.getElementById('outreach-list');
+  const empty = document.getElementById('outreach-empty');
+
+  if (items.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  container.innerHTML = items.map(e => {
+    const overdue = e.nextActionDate && isOverdue(e.nextActionDate);
+    const touches = e.touches || [];
+    const lastTouch = touches.length > 0 ? touches[touches.length - 1] : null;
+
+    let stepsHtml = '';
+    for (let i = 1; i <= 4; i++) {
+      const done = i <= e.touchNumber;
+      const current = i === e.touchNumber + 1;
+      if (i > 1) stepsHtml += `<div class="touch-connector ${i <= e.touchNumber ? 'done' : ''}"></div>`;
+      stepsHtml += `<div class="touch-step ${done ? 'done' : ''} ${current ? 'current' : ''}">${i}</div>`;
+    }
+
+    return `
+      <div class="panel outreach-card ${overdue ? 'overdue' : ''}">
+        <div class="outreach-header">
+          <div>
+            <div class="outreach-name">${esc(e.name)}</div>
+            <div class="outreach-meta">${esc(e.location)} | ${esc(e.date)}</div>
+          </div>
+          <span class="badge ${statusClass(e.status)}">${esc(e.status)}</span>
+        </div>
+        <div class="touch-steps">${stepsHtml}</div>
+        <div class="outreach-footer">
+          <div style="font-size:12px;color:var(--text-muted);">
+            Last touch: ${lastTouch ? esc(lastTouch.type) + ' on ' + formatDate(lastTouch.date) : 'None'}
+            ${e.nextActionDate ? ' | Next: <span class="' + (overdue ? 'overdue-text' : '') + '">' + formatDate(e.nextActionDate) + '</span>' : ''}
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openTouchModal('${e.id}')">Log Touch</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============ TOUCH MODAL ============
+function openTouchModal(evtId) {
+  document.getElementById('touch-evt-id').value = evtId;
+  document.getElementById('touch-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('touch-notes').value = '';
+  document.getElementById('touch-type').value = 'Email';
+  document.getElementById('touch-modal').classList.remove('hidden');
+}
+function closeTouchModal() { document.getElementById('touch-modal').classList.add('hidden'); }
+
+function saveTouch() {
+  const evtId = document.getElementById('touch-evt-id').value;
+  const evt = data.events.find(e => e.id === evtId);
+  if (!evt) return;
+
+  if (!evt.touches) evt.touches = [];
+  evt.touches.push({
+    type: document.getElementById('touch-type').value,
+    date: document.getElementById('touch-date').value,
+    notes: document.getElementById('touch-notes').value.trim()
+  });
+  evt.touchNumber = Math.min(evt.touchNumber + 1, 4);
+  if (evt.status === 'Researching') evt.status = 'Outreach Sent';
+
+  saveData();
+  closeTouchModal();
+  renderAll();
+}
+
+// ============ GIG CALENDAR ============
+function renderGigs() {
+  const gigs = data.gigs.slice().sort((a, b) => {
+    if (!a.date) return 1; if (!b.date) return -1;
+    return a.date.localeCompare(b.date);
+  });
+  const container = document.getElementById('gig-list');
+  const empty = document.getElementById('gig-empty');
+  const totalEl = document.getElementById('pipeline-value');
+
+  const total = gigs.reduce((s, g) => s + (parseFloat(g.fee) || 0), 0);
+  totalEl.textContent = '$' + total.toLocaleString();
+
+  if (gigs.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const statusColors = { Tentative: 'color-gray', Pending: 'color-amber', Confirmed: 'color-green', Completed: 'color-blue' };
+
+  container.innerHTML = gigs.map(g => `
+    <div class="panel gig-card">
+      <div class="gig-info">
+        <div class="gig-name">${esc(g.name)}</div>
+        <div class="gig-detail">${g.date ? formatDate(g.date) : 'TBD'} | ${esc(g.location || 'TBD')}</div>
+        <div class="gig-status"><span class="badge ${statusColors[g.status] || 'color-gray'}">${g.status}</span></div>
+        ${g.notes ? '<div class="gig-detail mt-8">' + esc(g.notes) + '</div>' : ''}
+      </div>
+      <div style="text-align:right;">
+        <div class="gig-fee">${g.fee ? '$' + parseFloat(g.fee).toLocaleString() : '--'}</div>
+        <button class="btn btn-outline btn-sm mt-8" onclick="openGigModal('${g.id}')">Edit</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ============ GIG MODAL ============
+function openGigModal(id) {
+  const modal = document.getElementById('gig-modal');
+  const title = document.getElementById('gig-modal-title');
+  const delBtn = document.getElementById('gig-delete-btn');
+
+  if (id) {
+    const gig = data.gigs.find(g => g.id === id);
+    if (!gig) return;
+    title.textContent = 'Edit Gig';
+    delBtn.style.display = '';
+    document.getElementById('gig-id').value = id;
+    document.getElementById('gig-name').value = gig.name;
+    document.getElementById('gig-date').value = gig.date || '';
+    document.getElementById('gig-location').value = gig.location || '';
+    document.getElementById('gig-fee').value = gig.fee || '';
+    document.getElementById('gig-status').value = gig.status;
+    document.getElementById('gig-notes').value = gig.notes || '';
+  } else {
+    title.textContent = 'Add Gig';
+    delBtn.style.display = 'none';
+    document.getElementById('gig-id').value = '';
+    document.getElementById('gig-name').value = '';
+    document.getElementById('gig-date').value = '';
+    document.getElementById('gig-location').value = '';
+    document.getElementById('gig-fee').value = '';
+    document.getElementById('gig-status').value = 'Tentative';
+    document.getElementById('gig-notes').value = '';
+  }
+  modal.classList.remove('hidden');
+}
+function closeGigModal() { document.getElementById('gig-modal').classList.add('hidden'); }
+
+function saveGig() {
+  const name = document.getElementById('gig-name').value.trim();
+  if (!name) { alert('Event name is required.'); return; }
+
+  const obj = {
+    name,
+    date: document.getElementById('gig-date').value,
+    location: document.getElementById('gig-location').value.trim(),
+    fee: document.getElementById('gig-fee').value.trim(),
+    status: document.getElementById('gig-status').value,
+    notes: document.getElementById('gig-notes').value.trim(),
+  };
+
+  const id = document.getElementById('gig-id').value;
+  if (id) {
+    const idx = data.gigs.findIndex(g => g.id === id);
+    if (idx >= 0) {
+      // If status changed to Completed, init checklist
+      if (obj.status === 'Completed' && data.gigs[idx].status !== 'Completed') {
+        if (!data.checklists[id]) {
+          data.checklists[id] = { items: CHECKLIST_ITEMS.map(() => false) };
+        }
+      }
+      Object.assign(data.gigs[idx], obj);
+    }
+  } else {
+    obj.id = uid();
+    data.gigs.push(obj);
+    if (obj.status === 'Completed') {
+      data.checklists[obj.id] = { items: CHECKLIST_ITEMS.map(() => false) };
+    }
+  }
+  saveData();
+  closeGigModal();
+  renderAll();
+}
+
+function deleteGig() {
+  const id = document.getElementById('gig-id').value;
+  if (!id) return;
+  if (!confirm('Delete this gig?')) return;
+  data.gigs = data.gigs.filter(g => g.id !== id);
+  delete data.checklists[id];
+  saveData();
+  closeGigModal();
+  renderAll();
+}
+
+// ============ POST-TALK CHECKLISTS ============
+function renderChecklists() {
+  const completedGigs = data.gigs.filter(g => g.status === 'Completed');
+  const container = document.getElementById('checklist-list');
+  const empty = document.getElementById('checklist-empty');
+  const overallEl = document.getElementById('overall-completion');
+  const overallPct = document.getElementById('overall-pct');
+
+  if (completedGigs.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    overallEl.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  overallEl.style.display = '';
+
+  // Overall rate
+  let totalChecked = 0, totalItems = 0;
+  completedGigs.forEach(g => {
+    if (!data.checklists[g.id]) data.checklists[g.id] = { items: CHECKLIST_ITEMS.map(() => false) };
+    const cl = data.checklists[g.id];
+    totalItems += CHECKLIST_ITEMS.length;
+    totalChecked += cl.items.filter(Boolean).length;
+  });
+  const overallRate = totalItems > 0 ? Math.round(totalChecked / totalItems * 100) : 0;
+  overallPct.textContent = overallRate + '%';
+
+  container.innerHTML = completedGigs.map(g => {
+    const cl = data.checklists[g.id];
+    const checked = cl.items.filter(Boolean).length;
+    const pct = Math.round(checked / CHECKLIST_ITEMS.length * 100);
+
+    const itemsHtml = CHECKLIST_ITEMS.map((label, i) => `
+      <div class="checklist-item ${cl.items[i] ? 'checked' : ''}" onclick="toggleCheck('${g.id}', ${i})">
+        <input type="checkbox" ${cl.items[i] ? 'checked' : ''} tabindex="-1">
+        <span>${label}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="panel checklist-card">
+        <div class="checklist-title">${esc(g.name)}</div>
+        <div class="checklist-subtitle">${g.date ? formatDate(g.date) : 'TBD'} | ${esc(g.location || 'TBD')}</div>
+        <div class="progress-bar mb-8"><div class="progress-fill ${pct < 100 ? 'partial' : ''}" style="width:${pct}%"></div></div>
+        ${itemsHtml}
+        <div class="checklist-pct">${checked}/${CHECKLIST_ITEMS.length} complete (${pct}%)</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleCheck(gigId, idx) {
+  if (!data.checklists[gigId]) return;
+  data.checklists[gigId].items[idx] = !data.checklists[gigId].items[idx];
+  saveData();
+  renderChecklists();
+  renderKPIs();
+}
+
+// ============ CSV EXPORT/IMPORT ============
+function exportCSV() {
+  const headers = ['Event Name','Date','Location','Audience Size','Audience Type','Warmth','Status','Tier','Touch #','Next Action Date','Fee','Notes'];
+  const rows = data.events.map(e => [
+    e.name, e.date, e.location, e.audienceSize, e.audienceType || '',
+    e.warmth, e.status, e.tier, e.touchNumber, e.nextActionDate || '', e.fee || '', e.notes || ''
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'speaking-pipeline-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const lines = e.target.result.split('\n').filter(l => l.trim());
+    if (lines.length < 2) { alert('CSV must have a header row and at least one data row.'); return; }
+
+    // Parse CSV (handles quoted fields)
+    function parseLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+          else { inQuotes = !inQuotes; }
+        } else if (ch === ',' && !inQuotes) {
+          result.push(current.trim()); current = '';
+        } else {
+          current += ch;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    }
+
+    const imported = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseLine(lines[i]);
+      if (cols.length < 2 || !cols[0]) continue;
+      imported.push({
+        id: uid(),
+        name: cols[0] || '',
+        date: cols[1] || '',
+        location: cols[2] || '',
+        audienceSize: cols[3] || '',
+        audienceType: cols[4] || '',
+        warmth: parseInt(cols[5]) || 1,
+        status: cols[6] || 'Not Contacted',
+        tier: parseInt(cols[7]) || 1,
+        touchNumber: parseInt(cols[8]) || 0,
+        nextActionDate: cols[9] || '',
+        fee: cols[10] || '',
+        notes: cols[11] || '',
+        touches: []
+      });
+    }
+
+    if (imported.length === 0) { alert('No valid rows found.'); return; }
+    if (confirm(`Import ${imported.length} events? This will REPLACE your current target list.`)) {
+      data.events = imported;
+      saveData();
+      renderAll();
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ============ RENDER ALL ============
+function renderAll() {
+  renderKPIs();
+  renderTargets();
+  renderOutreach();
+  renderGigs();
+  renderChecklists();
+}
+
+function init() {
+  loadData();
+  document.getElementById('last-updated').textContent = formatDateTime(data.lastUpdated);
+  renderAll();
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.add('hidden');
+  });
+});
+</script>
+</body>
+</html>
